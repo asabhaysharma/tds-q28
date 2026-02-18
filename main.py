@@ -1,10 +1,9 @@
 import os
 import json
-import asyncio
 from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware  # Import CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 
@@ -15,13 +14,12 @@ BASE_URL = "https://aipipe.org/openai/v1"
 app = FastAPI(title="StreamText Inc. LLM Handler")
 
 # --- CORS CONFIGURATION ---
-# This allows the assignment platform (running on any domain) to hit your API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (POST, GET, OPTIONS, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialize OpenAI Client
@@ -40,31 +38,38 @@ async def llm_streamer(prompt: str) -> AsyncGenerator[str, None]:
     data in SSE format.
     """
     try:
+        # OPTIMIZATION: Use gpt-4o-mini for fastest Time-To-First-Token (TTFT)
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini", 
             messages=[
-                {"role": "system", "content": "You are a data analyst. Generate a 188-word report about space exploration including data analysis and recommendations. Ensure the length is at least 752 characters."},
+                {
+                    "role": "system", 
+                    "content": "You are a helpful assistant. Write a detailed 188-word report on space exploration. Ensure it is at least 752 characters long."
+                },
                 {"role": "user", "content": prompt}
             ],
             stream=True,
-            timeout=10.0
+            temperature=0.7, # Slightly lower temp can sometimes improve stability
+            max_tokens=500,  # Limit generation to keep it snappy (but enough for requirements)
+            timeout=5.0      # Fail fast if connection hangs
         )
 
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
-                data = {
+                # Manually constructing the JSON to ensure minimal overhead
+                data = json.dumps({
                     "choices": [{
                         "delta": {"content": content}
                     }]
-                }
-                yield f"data: {json.dumps(data)}\n\n"
+                })
+                yield f"data: {data}\n\n"
 
         yield "data: [DONE]\n\n"
 
     except Exception as e:
-        error_data = {"error": str(e)}
-        yield f"data: {json.dumps(error_data)}\n\n"
+        error_data = json.dumps({"error": str(e)})
+        yield f"data: {error_data}\n\n"
 
 @app.post("/generate")
 async def stream_content(request: StreamRequest):
