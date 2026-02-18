@@ -40,7 +40,7 @@ async def llm_streamer(prompt: str) -> AsyncGenerator[str, None]:
     try:
         # OPTIMIZATION: Use gpt-4o-mini for fastest Time-To-First-Token (TTFT)
         response = await client.chat.completions.create(
-            model="gpt-4o-mini", 
+            model="gpt-3.5-turbo", 
             messages=[
                 {
                     "role": "system", 
